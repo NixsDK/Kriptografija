@@ -6,14 +6,14 @@ Simple GUI for AES-128-CBC File Encryption/Decryption
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 import os
-from aes_encrypt import encrypt_file, decrypt_file
+from aes_encrypt import encrypt_file, decrypt_file, display_encrypted_string
 
 
 class AESEncryptionGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("AES-128-CBC File Encryption")
-        self.root.geometry("600x500")
+        self.root.geometry("800x600")
         self.root.resizable(True, True)
         
         # Variables
@@ -64,7 +64,7 @@ class AESEncryptionGUI:
         
         tk.Label(
             key_frame, 
-            text="128-bit Key (hex):", 
+            text="Key or passphrase (hex key = 32 chars, or any text):", 
             font=("Arial", 10)
         ).pack(anchor="w")
         
@@ -78,7 +78,7 @@ class AESEncryptionGUI:
         
         tk.Label(
             key_frame, 
-            text="(Leave empty for encryption - key will be generated)", 
+            text="(Leave empty for encryption - random key/IV will be generated)", 
             font=("Arial", 8),
             fg="gray"
         ).pack(anchor="w")
@@ -126,9 +126,10 @@ class AESEncryptionGUI:
         self.output_text = scrolledtext.ScrolledText(
             output_frame,
             height=12,
-            font=("Courier", 9),
-            wrap=tk.WORD,
-            state=tk.DISABLED
+            font=("Courier", 8),
+            wrap=tk.CHAR,
+            state=tk.DISABLED,
+            width=80
         )
         self.output_text.pack(fill=tk.BOTH, expand=True, pady=5)
     
@@ -142,11 +143,14 @@ class AESEncryptionGUI:
             self.root.selected_file_path = filename
             self.log_output(f"Selected: {os.path.basename(filename)}")
     
-    def log_output(self, message, clear=False):
+    def log_output(self, message, clear=False, add_newline=True):
         self.output_text.config(state=tk.NORMAL)
         if clear:
             self.output_text.delete(1.0, tk.END)
-        self.output_text.insert(tk.END, message + "\n")
+        if add_newline:
+            self.output_text.insert(tk.END, message + "\n")
+        else:
+            self.output_text.insert(tk.END, message)
         self.output_text.see(tk.END)
         self.output_text.config(state=tk.DISABLED)
         self.root.update()
@@ -163,22 +167,30 @@ class AESEncryptionGUI:
             self.log_output(f"File: {os.path.basename(self.root.selected_file_path)}")
             
             # Encrypt file
-            key_hex = encrypt_file(self.root.selected_file_path)
+            key_hex_out, iv_hex_out = encrypt_file(self.root.selected_file_path, self.key_var.get().strip() or None)
+            
+            # Read and display encrypted content in dense format (Latin-1)
+            with open(self.root.selected_file_path, 'r', encoding='latin-1') as f:
+                dense_display = f.read()
             
             self.log_output("\n" + "=" * 60)
             self.log_output("ENCRYPTION SUCCESSFUL!")
             self.log_output("=" * 60)
-            self.log_output(f"\nGenerated 128-bit Key:")
-            self.log_output(f"{key_hex}")
+            self.log_output(f"\nGenerated Key (hex):")
+            self.log_output(f"{key_hex_out}")
+            self.log_output(f"IV (hex): {iv_hex_out}")
             self.log_output("\n⚠️ IMPORTANT: Save this key to decrypt the file!")
             self.log_output("=" * 60)
+            self.log_output(f"\nEncrypted Content (Latin-1): {len(dense_display)} chars")
+            self.log_output(dense_display, add_newline=False)
+            self.log_output("\n" + "=" * 60)
             
             # Update key field
-            self.key_var.set(key_hex)
+            self.key_var.set(key_hex_out)
             
             messagebox.showinfo(
                 "Success", 
-                f"File encrypted successfully!\n\nKey: {key_hex}\n\nSave this key!"
+                f"File encrypted successfully!\n\nKey: {key_hex_out}\nIV: {iv_hex_out}\n\nSave the key!"
             )
             
         except Exception as e:
@@ -197,10 +209,6 @@ class AESEncryptionGUI:
         key_hex = self.key_var.get().strip()
         if not key_hex:
             messagebox.showerror("Error", "Please enter the 128-bit key!")
-            return
-        
-        if len(key_hex) != 32:
-            messagebox.showerror("Error", "Key must be exactly 32 hex characters (128 bits)!")
             return
         
         try:
